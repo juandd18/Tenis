@@ -1,9 +1,12 @@
 #https://github.com/shariqiqbal2810/maddpg-pytorch/blob/master/utils/agents.py
+import torch
 from torch import Tensor
 from torch.autograd import Variable
 from torch.optim import Adam
 from network import Neural
 from utils import hard_update, gumbel_softmax, onehot_from_logits, OUNoise
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 class DDPGAgent(object):
     """
@@ -51,16 +54,21 @@ class DDPGAgent(object):
         else:
             self.exploration.scale = scale
 
-    def step(self, obs, explore=False):
+    def step(self, obs, explore=True):
         """
         Take a step forward in environment for a minibatch of observations
         Inputs:
-            obs (PyTorch Variable): Observations for this agent
+            obs : Observations for this agent
             explore (boolean): Whether or not to add exploration noise
         Outputs:
             action (PyTorch Variable): Actions for this agent
         """
-        action = self.policy(obs)
+        state = Variable(torch.Tensor(obs[None, ...]),requires_grad=False)
+        
+        self.policy.eval()
+        with torch.no_grad():
+            action = self.policy(state)
+        self.policy.train()
         # continuous action
         if explore:
             action += Variable(Tensor(self.exploration.noise()),requires_grad=False)

@@ -43,7 +43,11 @@ class Neural(nn.Module):
         Outputs:
             out (PyTorch Matrix): Output of network (actions, values, etc)
         """
-        h1 = self.nonlin(self.fc1(self.in_fn(X)))
-        h2 = self.nonlin(self.fc2(nn.BatchNorm1d(h1)))
-        out = self.out_fn(self.fc3(nn.BatchNorm1d(h2)))
+        elu = nn.ELU()
+        input_d = self.fc1(self.in_fn(X))
+        h1 = elu(input_d)
+        input_t = self.fc2(h1)
+        h2 = elu(input_t)
+        final = self.fc3(h2)
+        out = elu(final)
         return out
