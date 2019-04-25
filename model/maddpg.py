@@ -16,7 +16,7 @@ class MADDPG(object):
     Wrapper class for DDPG-esque (i.e. also MADDPG) agents in multi-agent task
     """
     def __init__(self, agent_init_params, alg_types,num_agents,
-                 gamma=0.95, tau=0.01, lr=0.01, hidden_dim=64,
+                 gamma=0.95, tau=0.01,
                  discrete_action=False,batch_size=64,max_episode_len=100):
         """
         Inputs:
@@ -35,14 +35,11 @@ class MADDPG(object):
         """
         self.nagents = len(alg_types)
         self.alg_types = alg_types
-        self.agents = [DDPGAgent(lr=lr, discrete_action=discrete_action,
-                                 hidden_dim=hidden_dim,
-                                 **params)
-                       for params in agent_init_params]
+
+        self.agents = [DDPGAgent(**agent_init_params) for i in range(num_agents)]
         self.agent_init_params = agent_init_params
         self.gamma = gamma
         self.tau = tau
-        self.lr = lr
         self.discrete_action = discrete_action
         self.pol_dev = 'cpu'  # device for policies
         self.critic_dev = 'cpu'  # device for critics
@@ -78,7 +75,7 @@ class MADDPG(object):
         for a in self.agents:
             a.reset_noise()
 
-    def step(self, observations, explore=False):
+    def step(self, observations, explore=True):
         """
         Take a step forward in environment with all agents
         Inputs:

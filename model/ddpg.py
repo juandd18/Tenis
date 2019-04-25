@@ -10,8 +10,8 @@ class DDPGAgent(object):
     General class for DDPG agents (policy, critic, target policy, target
     critic, exploration noise)
     """
-    def __init__(self, num_in_pol, num_out_pol, num_in_critic, hidden_dim=64,
-                 lr=0.01, discrete_action=False):
+    def __init__(self, num_in_pol, num_out_pol, num_in_critic, hidden_dim_actor=120,
+    hidden_dim_critic=64,lr_actor=0.01,lr_critic=0.01, discrete_action=False):
         """
         Inputs:
             num_in_pol (int): number of dimensions for policy input
@@ -19,23 +19,23 @@ class DDPGAgent(object):
             num_in_critic (int): number of dimensions for critic input
         """
         self.policy = Neural(num_in_pol, num_out_pol,
-                                 hidden_dim=hidden_dim,
+                                 hidden_dim=hidden_dim_actor,
                                  constrain_out=True,
                                  discrete_action=discrete_action)
         self.critic = Neural(num_in_critic, 1,
-                                 hidden_dim=hidden_dim,
+                                 hidden_dim=hidden_dim_critic,
                                  constrain_out=False)
         self.target_policy = Neural(num_in_pol, num_out_pol,
-                                        hidden_dim=hidden_dim,
+                                        hidden_dim=hidden_dim_actor,
                                         constrain_out=True,
                                         discrete_action=discrete_action)
         self.target_critic = Neural(num_in_critic, 1,
-                                        hidden_dim=hidden_dim,
+                                        hidden_dim=hidden_dim_critic,
                                         constrain_out=False)
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
-        self.policy_optimizer = Adam(self.policy.parameters(), lr=lr)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr)
+        self.policy_optimizer = Adam(self.policy.parameters(), lr=lr_actor)
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr_critic)
         
         self.exploration = OUNoise(num_out_pol)
         
