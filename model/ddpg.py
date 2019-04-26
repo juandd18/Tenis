@@ -25,18 +25,14 @@ class DDPGAgent(object):
         """
         self.policy = Actor(num_in_pol, num_out_pol,
                                  hidden_dim=hidden_dim_actor,
-                                 constrain_out=True,
                                  discrete_action=discrete_action)
         self.critic = Critic(num_in_critic, 1,num_out_pol,
-                                 hidden_dim=hidden_dim_critic,
-                                 constrain_out=False)
+                                 hidden_dim=hidden_dim_critic)
         self.target_policy = Actor(num_in_pol, num_out_pol,
                                         hidden_dim=hidden_dim_actor,
-                                        constrain_out=True,
                                         discrete_action=discrete_action)
         self.target_critic = Critic(num_in_critic, 1,num_out_pol,
-                                        hidden_dim=hidden_dim_critic,
-                                        constrain_out=False)
+                                        hidden_dim=hidden_dim_critic)
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
         self.policy_optimizer = Adam(self.policy.parameters(), lr=lr_actor)
@@ -110,8 +106,8 @@ class DDPGAgent(object):
     def update(self, obs, acs, rews, next_obs, dones ,t_step, logger=None):
 
         #TODO CHECK if the code below improve performance 
-        if not t_step % 100 == 0:  # only update every 100 steps
-            return
+        #if not t_step % 100 == 0:  # only update every 100 steps
+        #    return
         
         obs = Variable(torch.from_numpy(obs)).float()
         next_obs = Variable(torch.from_numpy(next_obs)).float()

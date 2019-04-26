@@ -12,7 +12,7 @@ class Actor(nn.Module):
     Neural (can be used as value or policy)
     """
     def __init__(self, input_dim, out_dim, hidden_dim=64, nonlin=nn.ELU,
-                 constrain_out=False, norm_in=True, discrete_action=False):
+                  norm_in=True, discrete_action=False):
         """
         Inputs:
             input_dim (int): Number of dimensions in input
@@ -22,22 +22,18 @@ class Actor(nn.Module):
         """
         super(Actor, self).__init__()
 
-        if norm_in:  # normalize inputs
-            self.in_fn = nn.BatchNorm1d(input_dim)
-            self.in_fn.weight.data.fill_(1)
-            self.in_fn.bias.data.fill_(0)
-        else:
-            self.in_fn = lambda x: x
+        self.bn0 = nn.BatchNorm1d(input_dim)
         self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, out_dim)
-        self.nonlin = nonlin
-        if constrain_out and not discrete_action:
-            # initialize small to prevent saturation
-            self.fc3.weight.data.uniform_(-3e-3, 3e-3)
-            self.out_fn = F.tanh
-        else:  # logits for discrete action (will softmax later)
-            self.out_fn = lambda x: x
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim+60)
+        self.bn2 = nn.BatchNorm1d(hidden_dim+60)
+        self.fc3 = nn.Linear(hidden_dim+60, out_dim)
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        self.fc3.weight.data.uniform_(-3e-3, 3e-3)
+        
 
     def forward(self, state):
         """
@@ -48,13 +44,10 @@ class Actor(nn.Module):
             out (PyTorch Matrix): Output of network (actions, values, etc)
         """
         elu = nn.ELU()
-        input_d = self.fc1(self.in_fn(state))
-        h1 = elu(input_d)
-        input_t = self.fc2(h1)
-        h2 = elu(input_t)
-        final = self.fc3(h2)
-        out = elu(final)
-        return out
+        x = self.bn0(state)
+        x = elu(self.bn1(self.fc1(x)))
+        x =elu(self.bn2(self.fc2(x)))
+        return torch.tanh(self.fc3(x))
 
 class Critic(nn.Module):
     """
@@ -73,20 +66,13 @@ class Critic(nn.Module):
 
         if norm_in:  # normalize inputs
             self.in_fn = nn.BatchNorm1d(input_dim)
-            self.in_fn.weight.data.fill_(1)
-            self.in_fn.bias.data.fill_(0)
-        else:
-            self.in_fn = lambda x: x
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim+action_size, hidden_dim)
         self.fc3 = nn.Linear(hidden_dim, out_dim)
         self.nonlin = nonlin
-        if constrain_out and not discrete_action:
-            # initialize small to prevent saturation
-            self.fc3.weight.data.uniform_(-3e-3, 3e-3)
-            self.out_fn = F.tanh
-        else:  # logits for discrete action (will softmax later)
-            self.out_fn = lambda x: x
+
+        # logits for discrete action (will softmax later)
+        self.out_fn = lambda x: x
 
     def forward(self, state,actions):
         """
@@ -104,5 +90,5 @@ class Critic(nn.Module):
         input_t = self.fc2(x_join)
         h2 = elu(input_t)
         final = self.fc3(h2)
-        out = elu(final)
+        out = self.out_fn(final)
         return out

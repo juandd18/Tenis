@@ -34,6 +34,11 @@ class MADDPG(object):
 
         self.agents = [DDPGAgent(**agent_init_params) for i in range(num_agents)]
         self.agent_init_params = agent_init_params
+        self.init_dict = {
+                     'alg_types': alg_types,
+                     'agent_init_params':agent_init_params,
+                     'num_agents': num_agents,
+                     'discrete_action': discrete_action}
         self.gamma = gamma
         self.tau = tau
         self.discrete_action = discrete_action
@@ -126,7 +131,7 @@ class MADDPG(object):
         """
         save_dict = torch.load(filename)
         instance = cls(**save_dict['init_dict'])
-        instance.init_dict = save_dict['init_dict']
+        instance.agent_init_params = save_dict['init_dict']
         for a, params in zip(instance.agents, save_dict['agent_params']):
             a.load_params(params)
         return instance
