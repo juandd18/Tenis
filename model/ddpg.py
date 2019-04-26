@@ -47,7 +47,7 @@ class DDPGAgent(object):
         self.gamma = gamma
         self.tau = tau
         self.batch_size = batch_size
-        self.replay_buffer = ReplayBuffer(1e6)
+        self.replay_buffer = ReplayBuffer(1e5)
         self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.niter = 0
@@ -88,8 +88,15 @@ class DDPGAgent(object):
 
     def step(self, state, action, reward, next_state, done,t_step):
         
+        # Save experience / reward
+        self.replay_buffer.add(state, action, reward, next_state, done)
+
         # Learn, if enough samples are available in memory
         if len(self.replay_buffer) > self.max_replay_buffer_len:
+
+            #TODO CHECK if the code below improve performance 
+            if not t_step % 10 == 0:  # only update every 10 steps
+                return
             
             self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
 
@@ -98,17 +105,11 @@ class DDPGAgent(object):
             obs, acs, rews, next_obs, dones = self.replay_buffer.sample_index(index)
 
             self.update(obs, acs, rews, next_obs, dones,t_step)
-        else:
-            # Save experience / reward
-            self.replay_buffer.add(state, action, reward, next_state, done)
+        
 
 
     def update(self, obs, acs, rews, next_obs, dones ,t_step, logger=None):
 
-        #TODO CHECK if the code below improve performance 
-        #if not t_step % 100 == 0:  # only update every 100 steps
-        #    return
-        
         obs = Variable(torch.from_numpy(obs)).float()
         next_obs = Variable(torch.from_numpy(next_obs)).float()
         rews = Variable(torch.from_numpy(rews)).float()
