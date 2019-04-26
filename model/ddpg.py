@@ -88,9 +88,8 @@ class DDPGAgent(object):
 
     def step(self, state, action, reward, next_state, done,t_step):
         
-        #TODO fix limit to learn
         # Learn, if enough samples are available in memory
-        if len(self.replay_buffer) < self.max_replay_buffer_len:
+        if len(self.replay_buffer) > self.max_replay_buffer_len:
             
             self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
 
