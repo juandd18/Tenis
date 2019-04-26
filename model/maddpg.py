@@ -3,13 +3,9 @@
 import torch
 import torch.nn.functional as F
 
-from network import Neural
-from utils import soft_update, average_gradients, onehot_from_logits, gumbel_softmax,ReplayBuffer
+from utils import soft_update, average_gradients, onehot_from_logits, gumbel_softmax
 from model import DDPGAgent
 
-
-
-MSELoss = torch.nn.MSELoss()
 
 class MADDPG(object):
     """
@@ -50,17 +46,7 @@ class MADDPG(object):
         # Create experience buffer
         self.batch_size = batch_size
         self.max_episode_len = max_episode_len
-        self.replay_buffer = ReplayBuffer(1e6)
-        self.max_replay_buffer_len = batch_size * max_episode_len
-        self.replay_sample_index = None
-
-    @property
-    def policies(self):
-        return [a.policy for a in self.agents]
-
-    @property
-    def target_policies(self):
-        return [a.target_policy for a in self.agents]
+        
 
     def scale_noise(self, scale):
         """
@@ -75,131 +61,14 @@ class MADDPG(object):
         for a in self.agents:
             a.reset_noise()
 
-    def step(self, observations, explore=True):
-        """
-        Take a step forward in environment with all agents
-        Inputs:
-            observations: List of observations for each agent
-            explore (boolean): Whether or not to add exploration noise
-        Outputs:
-            actions: List of actions for each agent
-        """
-        return [a.step(obs, explore=explore) for a, obs in zip(self.agents,
+    def act(self, observations, explore=True):
+        return [a.act(obs, explore=explore) for a, obs in zip(self.agents,
                                                                  observations)]
 
+    def step(self,  observations, actions_, rewards_, next_states_, dones_,t_step):
 
-    def update(self, sample ,t, agent_i, parallel=False, logger=None):
-        """
-        Update parameters of agent model based on sample from replay buffer
-        Inputs:
-            sample: tuple of (observations, actions, rewards, next
-                    observations, and episode end masks) sampled randomly from
-                    the replay buffer. Each is a list with entries
-                    corresponding to each agent
-            agent_i (int): index of agent to update
-            parallel (bool): If true, will average gradients across threads
-            logger (SummaryWriter from Tensorboard-Pytorch):
-                If passed in, important quantities will be logged
-        """
-
-        if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
-            return
-
-        if not t % 100 == 0:  # only update every 100 steps
-            return
-
-        self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
-
-        # collect replay samples
-        index = self.replay_sample_index
-        obs, acs, rews, next_obs, dones = self.replay_buffer.sample_index(index)
-
-        curr_agent = self.agents[agent_i]
-
-        curr_agent.critic_optimizer.zero_grad()
-        if self.alg_types[agent_i] == 'MADDPG':
-            if self.discrete_action: # one-hot encode action
-                all_trgt_acs = [onehot_from_logits(pi(nobs)) for pi, nobs in
-                                zip(self.target_policies, next_obs)]
-            else:
-                all_trgt_acs = [pi(nobs) for pi, nobs in zip(self.target_policies,
-                                                             next_obs)]
-            trgt_vf_in = torch.cat((*next_obs, *all_trgt_acs), dim=1)
-        else:  # DDPG
-            if self.discrete_action:
-                trgt_vf_in = torch.cat((next_obs[agent_i],
-                                        onehot_from_logits(
-                                            curr_agent.target_policy(
-                                                next_obs[agent_i]))),
-                                       dim=1)
-            else:
-                trgt_vf_in = torch.cat((next_obs[agent_i],
-                                        curr_agent.target_policy(next_obs[agent_i])),
-                                       dim=1)
-        target_value = (rews[agent_i].view(-1, 1) + self.gamma *
-                        curr_agent.target_critic(trgt_vf_in) *
-                        (1 - dones[agent_i].view(-1, 1)))
-
-        if self.alg_types[agent_i] == 'MADDPG':
-            vf_in = torch.cat((*obs, *acs), dim=1)
-        else:  # DDPG
-            vf_in = torch.cat((obs[agent_i], acs[agent_i]), dim=1)
-        actual_value = curr_agent.critic(vf_in)
-        vf_loss = MSELoss(actual_value, target_value.detach())
-        vf_loss.backward()
-        if parallel:
-            average_gradients(curr_agent.critic)
-        torch.nn.utils.clip_grad_norm(curr_agent.critic.parameters(), 0.5)
-        curr_agent.critic_optimizer.step()
-
-        curr_agent.policy_optimizer.zero_grad()
-
-        if self.discrete_action:
-            # Forward pass as if onehot (hard=True) but backprop through a differentiable
-            # Gumbel-Softmax sample. The MADDPG paper uses the Gumbel-Softmax trick to backprop
-            # through discrete categorical samples, but I'm not sure if that is
-            # correct since it removes the assumption of a deterministic policy for
-            # DDPG. Regardless, discrete policies don't seem to learn properly without it.
-            curr_pol_out = curr_agent.policy(obs[agent_i])
-            curr_pol_vf_in = gumbel_softmax(curr_pol_out, hard=True)
-        else:
-            curr_pol_out = curr_agent.policy(obs[agent_i])
-            curr_pol_vf_in = curr_pol_out
-        if self.alg_types[agent_i] == 'MADDPG':
-            all_pol_acs = []
-            for i, pi, ob in zip(range(self.nagents), self.policies, obs):
-                if i == agent_i:
-                    all_pol_acs.append(curr_pol_vf_in)
-                elif self.discrete_action:
-                    all_pol_acs.append(onehot_from_logits(pi(ob)))
-                else:
-                    all_pol_acs.append(pi(ob))
-            vf_in = torch.cat((*obs, *all_pol_acs), dim=1)
-        else:  # DDPG
-            vf_in = torch.cat((obs[agent_i], curr_pol_vf_in),
-                              dim=1)
-        pol_loss = -curr_agent.critic(vf_in).mean()
-        pol_loss += (curr_pol_out**2).mean() * 1e-3
-        pol_loss.backward()
-        if parallel:
-            average_gradients(curr_agent.policy)
-        torch.nn.utils.clip_grad_norm(curr_agent.policy.parameters(), 0.5)
-        curr_agent.policy_optimizer.step()
-        if logger is not None:
-            logger.add_scalars('agent%i/losses' % agent_i,
-                               {'vf_loss': vf_loss,
-                                'pol_loss': pol_loss},
-                               self.niter)
-
-    def update_all_targets(self):
-        """
-        Update all target networks (called after normal updates have been
-        performed for each agent)
-        """
-        for a in self.agents:
-            soft_update(a.target_critic, a.critic, self.tau)
-            soft_update(a.target_policy, a.policy, self.tau)
-        self.niter += 1
+        return [a.step(obs, action, reward, next_state, done,t_step) for a, obs,action,reward,next_state,done
+         in zip(self.agents,observations,actions_,rewards_,next_states_,dones_)]
 
     def prep_training(self, device='gpu'):
         for a in self.agents:
