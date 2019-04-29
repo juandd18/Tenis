@@ -47,7 +47,7 @@ class DDPGAgent(object):
         self.gamma = gamma
         self.tau = tau
         self.batch_size = batch_size
-        self.replay_buffer = ReplayBuffer(1e5)
+        self.replay_buffer = ReplayBuffer(1e7)
         self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.niter = 0
@@ -65,7 +65,7 @@ class DDPGAgent(object):
         else:
             self.exploration.scale = scale
 
-    def act(self, obs, explore=True):
+    def act(self, obs, explore=False):
         """
         Take a step forward in environment for a minibatch of observations
         Inputs:
@@ -82,8 +82,7 @@ class DDPGAgent(object):
         self.policy.train()
         # continuous action
         if explore:
-            action += Variable(Tensor(self.exploration.noise()),requires_grad=False)
-            action = action.clamp(-1, 1)
+            action += Variable(Tensor(self.exploration.sample()),requires_grad=False)
         return action
 
     def step(self, state, action, reward, next_state, done,t_step):
@@ -92,17 +91,17 @@ class DDPGAgent(object):
         self.replay_buffer.add(state, action, reward, next_state, done)
 
         # Learn, if enough samples are available in memory
-        if len(self.replay_buffer) > self.max_replay_buffer_len:
+        if len(self.replay_buffer) > self.batch_size*2:
 
             #TODO CHECK if the code below improve performance 
-            if not t_step % 10 == 0:  # only update every 10 steps
-                return
+            #if not t_step % 10 == 0:  # only update every 10 steps
+            #    return
             
-            self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
+            #self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
 
             # collect replay samples
-            index = self.replay_sample_index
-            obs, acs, rews, next_obs, dones = self.replay_buffer.sample_index(index)
+            #index = self.replay_sample_index
+            obs, acs, rews, next_obs, dones = self.replay_buffer.sample(self.batch_size)
 
             self.update(obs, acs, rews, next_obs, dones,t_step)
         
@@ -114,7 +113,11 @@ class DDPGAgent(object):
         next_obs = Variable(torch.from_numpy(next_obs)).float()
         rews = Variable(torch.from_numpy(rews)).float()
         acs = Variable(torch.from_numpy(acs)).float()
+        print(acs.shape)
         acs = acs.view(-1, 2)
+
+        print(obs.shape)
+        
         
         # --------- update critic ------------ #        
         self.critic_optimizer.zero_grad()
@@ -133,7 +136,7 @@ class DDPGAgent(object):
 
         # Minimize the loss
         vf_loss.backward()
-        torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 0.5)
+        #torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1)
         self.critic_optimizer.step()
 
         # --------- update actor --------------- #
@@ -148,10 +151,10 @@ class DDPGAgent(object):
 
 
         pol_loss = -self.critic(obs,curr_pol_vf_in).mean()
-        pol_loss += (curr_pol_out**2).mean() * 1e-3
+        #pol_loss += (curr_pol_out**2).mean() * 1e-3
         pol_loss.backward()
 
-        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
+        #torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
         self.policy_optimizer.step()
 
         self.update_all_targets()
@@ -168,8 +171,8 @@ class DDPGAgent(object):
         performed for each agent)
         """
         
-        soft_update(self.target_critic, self.critic, self.tau)
-        soft_update(self.target_policy, self.policy, self.tau)
+        soft_update(self.critic, self.target_critic, self.tau)
+        soft_update(self.policy, self.target_policy, self.tau)
         self.niter += 1
 
    

@@ -11,7 +11,7 @@ class Actor(nn.Module):
     """
     Neural (can be used as value or policy)
     """
-    def __init__(self, input_dim, out_dim, hidden_dim=64, nonlin=nn.ELU,
+    def __init__(self, input_dim, out_dim, hidden_dim=128, nonlin=nn.ELU,
                   norm_in=True, discrete_action=False):
         """
         Inputs:
@@ -25,9 +25,9 @@ class Actor(nn.Module):
         self.bn0 = nn.BatchNorm1d(input_dim)
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim+60)
-        self.bn2 = nn.BatchNorm1d(hidden_dim+60)
-        self.fc3 = nn.Linear(hidden_dim+60, out_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.bn2 = nn.BatchNorm1d(hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, out_dim)
 
         self.reset_parameters()
 
@@ -53,7 +53,7 @@ class Critic(nn.Module):
     """
     Neural (can be used as value or policy)
     """
-    def __init__(self, input_dim, out_dim, action_size, hidden_dim=64, nonlin=nn.ELU,
+    def __init__(self, input_dim, out_dim, action_size, hidden_dim=128, nonlin=nn.ELU,
                  constrain_out=False, norm_in=True, discrete_action=False):
         """
         Inputs:
