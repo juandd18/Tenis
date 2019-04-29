@@ -51,6 +51,8 @@ class DDPGAgent(object):
         self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.niter = 0
+        self.eps = 7.0
+        self.eps_decay = 1/(250*5)
 
         self.exploration = OUNoise(num_out_pol)
         self.discrete_action = discrete_action
@@ -82,7 +84,7 @@ class DDPGAgent(object):
         self.policy.train()
         # continuous action
         if explore:
-            action += Variable(Tensor(self.exploration.sample()),requires_grad=False)
+            action += Variable(Tensor(self.eps * self.exploration.sample()),requires_grad=False)
         return action
 
     def step(self, state, action, reward, next_state, done,t_step):
@@ -94,14 +96,14 @@ class DDPGAgent(object):
         if len(self.replay_buffer) > self.batch_size*2:
 
             #TODO CHECK if the code below improve performance 
-            #if not t_step % 10 == 0:  # only update every 10 steps
-            #    return
-            
-            #self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
+            if self.replay_sample_index is None:
+                self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
+            if  t_step % 100 == 0:  # only update every 10 steps
+                self.replay_sample_index = self.replay_buffer.make_latest_index(self.batch_size)
 
             # collect replay samples
             #index = self.replay_sample_index
-            obs, acs, rews, next_obs, dones = self.replay_buffer.sample(self.batch_size)
+            obs, acs, rews, next_obs, dones = self.replay_buffer.sample_index( self.replay_sample_index)
 
             self.update(obs, acs, rews, next_obs, dones,t_step)
         
@@ -113,12 +115,8 @@ class DDPGAgent(object):
         next_obs = Variable(torch.from_numpy(next_obs)).float()
         rews = Variable(torch.from_numpy(rews)).float()
         acs = Variable(torch.from_numpy(acs)).float()
-        print(acs.shape)
         acs = acs.view(-1, 2)
-
-        print(obs.shape)
-        
-        
+                
         # --------- update critic ------------ #        
         self.critic_optimizer.zero_grad()
         
@@ -158,6 +156,9 @@ class DDPGAgent(object):
         self.policy_optimizer.step()
 
         self.update_all_targets()
+        self.eps -= self.eps_decay
+        self.eps = max(self.eps, 0)
+        self.reset_noise()
 
         if logger is not None:
             logger.add_scalars('agent%i/losses' % self.agent_name,
@@ -173,8 +174,6 @@ class DDPGAgent(object):
         
         soft_update(self.critic, self.target_critic, self.tau)
         soft_update(self.policy, self.target_policy, self.tau)
-        self.niter += 1
-
    
     def get_params(self):
         return {'policy': self.policy.state_dict(),
