@@ -16,7 +16,7 @@ class DDPGAgent(object):
     """
     def __init__(self, num_in_pol, num_out_pol, num_in_critic, hidden_dim_actor=120,
     hidden_dim_critic=64,lr_actor=0.01,lr_critic=0.01,batch_size=64,
-    max_episode_len=100,tau=0.02,gamma = 0.78,agent_name='one', discrete_action=False):
+    max_episode_len=100,tau=0.02,gamma = 0.99,agent_name='one', discrete_action=False):
         """
         Inputs:
             num_in_pol (int): number of dimensions for policy input
