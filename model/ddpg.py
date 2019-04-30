@@ -57,6 +57,13 @@ class DDPGAgent(object):
         self.exploration = OUNoise(num_out_pol)
         self.discrete_action = discrete_action
 
+        self.num_history = 3
+        self.states = []
+        self.actions = []
+        self.rewards = []
+        self.next_states = []
+        self.dones = []
+
     def reset_noise(self):
         if not self.discrete_action:
             self.exploration.reset()
@@ -89,31 +96,50 @@ class DDPGAgent(object):
 
     def step(self, state, action, reward, next_state, done,t_step):
         
-        # Save experience / reward
-        self.replay_buffer.add(state, action, reward, next_state, done)
+        self.states.append(state)
+        self.actions.append(action)
+        self.rewards.append(reward)
+        self.next_states.append(next_state)
+        self.dones.append(done)
+
+        if t_step % 5 == self.num_history:
+            # Save experience / reward
+            self.replay_buffer.add(self.states, self.actions, self.rewards, self.next_states, self.dones)
+            self.states = []
+            self.actions = []
+            self.rewards = []
+            self.next_states = []
+            self.dones = []
 
         # Learn, if enough samples are available in memory
-        if len(self.replay_buffer) > self.batch_size*2:
+        if len(self.replay_buffer) > self.batch_size:
 
             #TODO CHECK if the code below improve performance 
-            if self.replay_sample_index is None:
-                self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
-            if  t_step % 100 == 0:  # only update every 10 steps
-                self.replay_sample_index = self.replay_buffer.make_latest_index(self.batch_size)
+            #if t_step % 800 == 0:  # only update every 100 steps
+            #    hard_update(self.actor_local, self.actor_target)
+            #    hard_update(self.critic_local, self.critic_target)
+            #    return
+            
+            #self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
 
             # collect replay samples
-            #index = self.replay_sample_index
-            obs, acs, rews, next_obs, dones = self.replay_buffer.sample_index( self.replay_sample_index)
-
-            self.update(obs, acs, rews, next_obs, dones,t_step)
+            #obs, acs, rews, next_obs, dones = self.replay_buffer.sample(self.batch_size)
+            #obs, acs, rews, next_obs, dones = self.replay_buffer.sample2()
+            
+            states,actions,rewards,next_state,dones = self.replay_buffer.sample(self.batch_size)
+            
+            for i in range(0,self.batch_size):
+                for j in range(0,self.num_history):
+                    self.update( states[i][j],actions[i][j],
+                    rewards[i][j],next_state[i][j],dones[i][j],t_step)
         
 
 
     def update(self, obs, acs, rews, next_obs, dones ,t_step, logger=None):
 
-        obs = Variable(torch.from_numpy(obs)).float()
-        next_obs = Variable(torch.from_numpy(next_obs)).float()
-        rews = Variable(torch.from_numpy(rews)).float()
+        obs = Variable(torch.from_numpy(obs[None,...])).float()
+        next_obs = Variable(torch.from_numpy(next_obs[None,...])).float()
+        rews = rews
         acs = Variable(torch.from_numpy(acs)).float()
         acs = acs.view(-1, 2)
                 
@@ -127,8 +153,9 @@ class DDPGAgent(object):
      
         target_value = (rews + self.gamma *
                         self.target_critic(next_obs,all_trgt_acs) *
-                        torch.from_numpy((1 - dones)).float() )
+                        (1 - dones)) 
        
+
         actual_value = self.critic(obs,acs)
         vf_loss = MSELoss(actual_value, target_value.detach())
 
