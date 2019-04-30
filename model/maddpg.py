@@ -42,10 +42,10 @@ class MADDPG(object):
         self.gamma = gamma
         self.tau = tau
         self.discrete_action = discrete_action
-        self.pol_dev = 'cpu'  # device for policies
-        self.critic_dev = 'cpu'  # device for critics
-        self.trgt_pol_dev = 'cpu'  # device for target policies
-        self.trgt_critic_dev = 'cpu'  # device for target critics
+        self.pol_dev = 'gpu'  # device for policies
+        self.critic_dev = 'gpu'  # device for critics
+        self.trgt_pol_dev = 'gpu'  # device for target policies
+        self.trgt_critic_dev = 'gpu'  # device for target critics
         self.niter = 0
 
         # Create experience buffer
@@ -102,7 +102,7 @@ class MADDPG(object):
                 a.target_critic = fn(a.target_critic)
             self.trgt_critic_dev = device
 
-    def prep_rollouts(self, device='cpu'):
+    def prep_rollouts(self, device='gpu'):
         for a in self.agents:
             a.policy.eval()
         if device == 'gpu':

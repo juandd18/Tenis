@@ -3,6 +3,7 @@ import torch
 from torch import Tensor
 from torch.autograd import Variable
 from torch.optim import Adam
+import numpy as np
 from network import Actor,Critic
 from utils import soft_update, hard_update, gumbel_softmax, onehot_from_logits, OUNoise,ReplayBuffer
 
@@ -57,7 +58,7 @@ class DDPGAgent(object):
         self.exploration = OUNoise(num_out_pol)
         self.discrete_action = discrete_action
 
-        self.num_history = 3
+        self.num_history = 2
         self.states = []
         self.actions = []
         self.rewards = []
@@ -91,7 +92,7 @@ class DDPGAgent(object):
         self.policy.train()
         # continuous action
         if explore:
-            action += Variable(Tensor(self.eps * self.exploration.sample()),requires_grad=False)
+            action += Variable(Tensor(self.exploration.sample()),requires_grad=False)
         return action
 
     def step(self, state, action, reward, next_state, done,t_step):
@@ -115,7 +116,8 @@ class DDPGAgent(object):
         if len(self.replay_buffer) > self.batch_size:
 
             #TODO CHECK if the code below improve performance 
-            #if t_step % 800 == 0:  # only update every 100 steps
+            if not t_step % 3 == 0:  # only update every 100 steps
+                return
             #    hard_update(self.actor_local, self.actor_target)
             #    hard_update(self.critic_local, self.critic_target)
             #    return
@@ -129,19 +131,21 @@ class DDPGAgent(object):
             states,actions,rewards,next_state,dones = self.replay_buffer.sample(self.batch_size)
             
             for i in range(0,self.batch_size):
-                for j in range(0,self.num_history):
-                    self.update( states[i][j],actions[i][j],
-                    rewards[i][j],next_state[i][j],dones[i][j],t_step)
+                #for j in range(0,self.num_history):
+                    #self.update(env, agent_id, states[i][j],actions[i][j],rewards[i][j],next_state[i][j],dones[i][j])
+                self.update(states[i],actions[i],rewards[i],next_state[i],dones[i],t_step)
         
 
 
     def update(self, obs, acs, rews, next_obs, dones ,t_step, logger=None):
 
-        obs = Variable(torch.from_numpy(obs[None,...])).float()
-        next_obs = Variable(torch.from_numpy(next_obs[None,...])).float()
-        rews = rews
-        acs = Variable(torch.from_numpy(acs)).float()
+        
+        obs = torch.from_numpy(obs).view(-1, 24).float()
+        acs = torch.from_numpy(acs).float()
+        rews = torch.from_numpy(np.array(rews)).float()
+        next_obs = torch.from_numpy(next_obs).view(-1, 24).float()
         acs = acs.view(-1, 2)
+        dones = torch.from_numpy(np.array(dones, dtype=np.uint8)).float()
                 
         # --------- update critic ------------ #        
         self.critic_optimizer.zero_grad()
@@ -150,7 +154,7 @@ class DDPGAgent(object):
             all_trgt_acs = onehot_from_logits(self.target_policy(next_obs))  
         else:
             all_trgt_acs = self.target_policy(next_obs) 
-     
+    
         target_value = (rews + self.gamma *
                         self.target_critic(next_obs,all_trgt_acs) *
                         (1 - dones)) 
