@@ -5,7 +5,7 @@ from torch.autograd import Variable
 from torch.optim import Adam
 import numpy as np
 from network import Actor,Critic
-from utils import soft_update, hard_update, gumbel_softmax, onehot_from_logits, OUNoise,ReplayBuffer
+from utils import soft_update, hard_update, gumbel_softmax, onehot_from_logits, OUNoise,ReplayBuffer,ReplayBufferOption
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 MSELoss = torch.nn.MSELoss()
@@ -27,12 +27,12 @@ class DDPGAgent(object):
         self.policy = Actor(num_in_pol, num_out_pol,
                                  hidden_dim=hidden_dim_actor,
                                  discrete_action=discrete_action)
-        self.critic = Critic(num_in_critic, 1,num_out_pol,
+        self.critic = Critic(num_in_pol, 1,num_out_pol,
                                  hidden_dim=hidden_dim_critic)
         self.target_policy = Actor(num_in_pol, num_out_pol,
                                         hidden_dim=hidden_dim_actor,
                                         discrete_action=discrete_action)
-        self.target_critic = Critic(num_in_critic, 1,num_out_pol,
+        self.target_critic = Critic(num_in_pol, 1,num_out_pol,
                                         hidden_dim=hidden_dim_critic)
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
@@ -48,7 +48,8 @@ class DDPGAgent(object):
         self.gamma = gamma
         self.tau = tau
         self.batch_size = batch_size
-        self.replay_buffer = ReplayBuffer(1e7)
+        #self.replay_buffer = ReplayBuffer(1e7)
+        self.replay_buffer = ReplayBufferOption(60000,self.batch_size,12)
         self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.niter = 0
@@ -58,7 +59,7 @@ class DDPGAgent(object):
         self.exploration = OUNoise(num_out_pol)
         self.discrete_action = discrete_action
 
-        self.num_history = 2
+        self.num_history = 10
         self.states = []
         self.actions = []
         self.rewards = []
@@ -84,8 +85,9 @@ class DDPGAgent(object):
         Outputs:
             action (PyTorch Variable): Actions for this agent
         """
-        state = Variable(torch.Tensor(obs[None, ...]),requires_grad=False)
-        
+        #obs = obs.reshape(1,48)
+        state = Variable(torch.Tensor(obs),requires_grad=False)
+
         self.policy.eval()
         with torch.no_grad():
             action = self.policy(state)
@@ -95,7 +97,7 @@ class DDPGAgent(object):
             action += Variable(Tensor(self.exploration.sample()),requires_grad=False)
         return action
 
-    def step(self, state, action, reward, next_state, done,t_step):
+    def step(self, agent_id, state, action, reward, next_state, done,t_step):
         
         self.states.append(state)
         self.actions.append(action)
@@ -103,8 +105,10 @@ class DDPGAgent(object):
         self.next_states.append(next_state)
         self.dones.append(done)
 
-        if t_step % 5 == self.num_history:
+        #self.replay_buffer.add(state, action, reward, next_state, done)
+        if t_step % self.num_history == 0:
             # Save experience / reward
+            
             self.replay_buffer.add(self.states, self.actions, self.rewards, self.next_states, self.dones)
             self.states = []
             self.actions = []
@@ -114,52 +118,30 @@ class DDPGAgent(object):
 
         # Learn, if enough samples are available in memory
         if len(self.replay_buffer) > self.batch_size:
-
-            #TODO CHECK if the code below improve performance 
-            if not t_step % 3 == 0:  # only update every 100 steps
-                return
-            #    hard_update(self.actor_local, self.actor_target)
-            #    hard_update(self.critic_local, self.critic_target)
-            #    return
             
-            #self.replay_sample_index = self.replay_buffer.make_index(self.batch_size)
-
-            # collect replay samples
-            #obs, acs, rews, next_obs, dones = self.replay_buffer.sample(self.batch_size)
-            #obs, acs, rews, next_obs, dones = self.replay_buffer.sample2()
-            
-            states,actions,rewards,next_state,dones = self.replay_buffer.sample(self.batch_size)
-            
-            for i in range(0,self.batch_size):
-                #for j in range(0,self.num_history):
-                    #self.update(env, agent_id, states[i][j],actions[i][j],rewards[i][j],next_state[i][j],dones[i][j])
-                self.update(states[i],actions[i],rewards[i],next_state[i],dones[i],t_step)
+            obs, acs, rews, next_obs, don = self.replay_buffer.sample()     
+            self.update(agent_id ,obs,  acs, rews, next_obs, don,t_step)
         
 
 
-    def update(self, obs, acs, rews, next_obs, dones ,t_step, logger=None):
-
-        
-        obs = torch.from_numpy(obs).view(-1, 24).float()
+    def update(self, agent_id, obs, acs, rews, next_obs, dones ,t_step, logger=None):
+    
+        obs = torch.from_numpy(obs).float()
         acs = torch.from_numpy(acs).float()
-        rews = torch.from_numpy(np.array(rews)).float()
-        next_obs = torch.from_numpy(next_obs).view(-1, 24).float()
-        acs = acs.view(-1, 2)
-        dones = torch.from_numpy(np.array(dones, dtype=np.uint8)).float()
+        rews = torch.from_numpy(rews[:,agent_id]).float()
+        next_obs = torch.from_numpy(next_obs).float()
+        dones = torch.from_numpy(dones[:,agent_id]).float()
+        acs = acs.view(-1,2)
                 
         # --------- update critic ------------ #        
         self.critic_optimizer.zero_grad()
         
-        if self.discrete_action: # one-hot encode action
-            all_trgt_acs = onehot_from_logits(self.target_policy(next_obs))  
-        else:
-            all_trgt_acs = self.target_policy(next_obs) 
+        all_trgt_acs = self.target_policy(next_obs) 
     
         target_value = (rews + self.gamma *
                         self.target_critic(next_obs,all_trgt_acs) *
                         (1 - dones)) 
-       
-
+        
         actual_value = self.critic(obs,acs)
         vf_loss = MSELoss(actual_value, target_value.detach())
 

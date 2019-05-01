@@ -44,8 +44,8 @@ class Actor(nn.Module):
             out (PyTorch Matrix): Output of network (actions, values, etc)
         """
         elu = nn.ELU()
-        #x = self.bn0(state.to('cuda:0'))
-        x = elu(self.bn1(self.fc1(state)))
+        x = self.bn0(state)
+        x = elu(self.bn1(self.fc1(x)))
         #x = elu(self.fc1(x))
         x =elu(self.fc2(x))
         return torch.tanh(self.fc3(x))
@@ -88,7 +88,7 @@ class Critic(nn.Module):
         #input_d = self.fc1(state)
         h1 = elu(input_d)
         x_join = torch.cat((h1, actions), dim=1)
-
+        
         input_t = self.fc2(x_join)
         h2 = elu(input_t)
         final = self.fc3(h2)

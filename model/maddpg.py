@@ -67,13 +67,16 @@ class MADDPG(object):
             a.reset_noise()
 
     def act(self, observations, explore=True):
-        return [a.act(obs, explore=explore) for a, obs in zip(self.agents,
-                                                                 observations)]
+        actions = []
+        for agent_id in range(0,2):
+            actions.append(self.agents[agent_id].act(observations))
+        return actions
+
 
     def step(self,  observations, actions_, rewards_, next_states_, dones_,t_step):
 
-        return [a.step(obs, action, reward, next_state, done,t_step) for a, obs,action,reward,next_state,done
-         in zip(self.agents,observations,actions_,rewards_,next_states_,dones_)]
+        for agent_id in range(0,2):
+            self.agents[agent_id].step(observations,actions_,rewards_,next_states_,dones_,t_step)
 
     def prep_training(self, device='gpu'):
         for a in self.agents:
