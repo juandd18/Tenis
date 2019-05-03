@@ -37,7 +37,7 @@ class DDPGAgent(object):
         hard_update(self.target_policy, self.policy)
         hard_update(self.target_critic, self.critic)
         self.policy_optimizer = Adam(self.policy.parameters(), lr=lr_actor)
-        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr_critic)
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=lr_critic,weight_decay=0)
         
         self.policy = self.policy.float()
         self.critic = self.critic.float()
@@ -49,17 +49,17 @@ class DDPGAgent(object):
         self.tau = tau
         self.batch_size = batch_size
         #self.replay_buffer = ReplayBuffer(1e7)
-        self.replay_buffer = ReplayBufferOption(60000,self.batch_size,12)
+        self.replay_buffer = ReplayBufferOption(500000,self.batch_size,12)
         self.max_replay_buffer_len = batch_size * max_episode_len
         self.replay_sample_index = None
         self.niter = 0
-        self.eps = 7.0
+        self.eps = 5.0
         self.eps_decay = 1/(250*5)
 
         self.exploration = OUNoise(num_out_pol)
         self.discrete_action = discrete_action
 
-        self.num_history = 10
+        self.num_history = 2
         self.states = []
         self.actions = []
         self.rewards = []
@@ -94,7 +94,8 @@ class DDPGAgent(object):
         self.policy.train()
         # continuous action
         if explore:
-            action += Variable(Tensor(self.exploration.sample()),requires_grad=False)
+            action += Variable(Tensor(self.eps * self.exploration.sample()),requires_grad=False)
+            action = torch.clamp(action, min=-1, max=1)
         return action
 
     def step(self, agent_id, state, action, reward, next_state, done,t_step):
@@ -131,6 +132,7 @@ class DDPGAgent(object):
         rews = torch.from_numpy(rews[:,agent_id]).float()
         next_obs = torch.from_numpy(next_obs).float()
         dones = torch.from_numpy(dones[:,agent_id]).float()
+
         acs = acs.view(-1,2)
                 
         # --------- update critic ------------ #        
@@ -165,13 +167,13 @@ class DDPGAgent(object):
         #pol_loss += (curr_pol_out**2).mean() * 1e-3
         pol_loss.backward()
 
-        #torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
+        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 1)
         self.policy_optimizer.step()
 
         self.update_all_targets()
         self.eps -= self.eps_decay
         self.eps = max(self.eps, 0)
-        self.reset_noise()
+        
 
         if logger is not None:
             logger.add_scalars('agent%i/losses' % self.agent_name,

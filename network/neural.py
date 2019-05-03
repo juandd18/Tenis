@@ -46,8 +46,8 @@ class Actor(nn.Module):
         elu = nn.ELU()
         x = self.bn0(state)
         x = elu(self.bn1(self.fc1(x)))
-        #x = elu(self.fc1(x))
-        x =elu(self.fc2(x))
+        #x = elu(self.fc1(state))
+        x =elu(self.bn2(self.fc2(x)))
         return torch.tanh(self.fc3(x))
 
 class Critic(nn.Module):

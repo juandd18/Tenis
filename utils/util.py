@@ -7,7 +7,7 @@ import numpy as np
 
 
 # https://github.com/ikostrikov/pytorch-ddpg-naf/blob/master/ddpg.py#L11
-def soft_update(target, source, tau):
+def soft_update( source, target, tau):
     """
     Perform DDPG soft update (move target params toward source based on weight
     factor tau)
